@@ -16,4 +16,4 @@ Python, aiogram 3, PostgreSQL, SQLAlchemy
 - Технические решения — [docs/decisions.md](./docs/decisions.md)
 
 ## Команда
-- ...
+- ///
