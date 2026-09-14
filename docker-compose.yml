@@ -1,0 +1,38 @@
+services:
+  db:
+    image: mysql:8.0
+    container_name: mysql_backend_db
+    restart: always
+    environment: #Здесь все данные рандомные, я у себя на компе поднял бд и проверял, что все норм общается
+      # !!! во время разработки будем сохранять пароли от бд и имена супеюзеров в env, чтобы не дай юог не утекло
+      MYSQL_ROOT_PASSWORD: root_password
+      MYSQL_DATABASE: my_backend_db
+      MYSQL_USER: backend_user
+      MYSQL_PASSWORD: backend_password
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+    healthcheck: #чтобы питон жил даем время бд развернуться
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "backend_user", "-pbackend_password"]
+      timeout: 5s
+      retries: 5
+      interval: 5s
+
+  web:
+    build: .
+    container_name: python_backend_app
+    restart: always
+    ports:
+      - "8000:8000"
+    environment:
+      - DB_HOST=db
+      - DB_USER=backend_user
+      - DB_PASSWORD=backend_password
+      - DB_NAME=my_backend_db
+    depends_on: #запускает после старта бд, иначе крашится
+      db:
+        condition: service_healthy
+
+volumes:
+  mysql_data:
