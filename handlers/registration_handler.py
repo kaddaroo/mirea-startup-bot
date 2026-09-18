@@ -19,7 +19,12 @@ class Registration(StatesGroup):
     name = State()
     patronymic = State()
     university = State()
+    other_university = State()
     course = State()
+    institute = State()
+    direction = State()
+    direction_code = State()
+    group = State()
 
 
 async def is_user_registered(telegram_id: int) -> bool:
@@ -289,10 +294,10 @@ async def process_university(
     state: FSMContext,
 ):
     """
-    Получает вуз пользователя.
+    Получает выбор вуза пользователя.
 
-    Для РТУ МИРЭА дополнительно спрашивает курс.
-    Для другого вуза завершает регистрацию.
+    Для РТУ МИРЭА спрашивает курс.
+    Для другого вуза просит ввести название вуза.
     """
 
     if callback.data == "university_mirea":
@@ -306,24 +311,40 @@ async def process_university(
         await callback.answer()
         return
 
-    await state.update_data(university="Другой вуз")
-
-    data = await state.get_data()
-
-    # В будущем здесь будет обращение к БД
-    # для сохранения данных зарегистрированного пользователя.
-
-    await state.clear()
+    await state.set_state(Registration.other_university)
 
     await callback.message.edit_text(
-        "✅ Регистрация завершена!\n\n"
-        f"Фамилия: {data['surname']}\n"
-        f"Имя: {data['name']}\n"
-        f"Отчество: {data['patronymic']}\n"
-        f"Вуз: {data['university']}"
+        "Из какого ты ВУЗА?"
     )
 
     await callback.answer()
+
+
+@router.message(Registration.other_university)
+async def process_other_university(
+    message: Message,
+    state: FSMContext,
+):
+    """
+    Получает название другого вуза и спрашивает курс.
+    """
+
+    if not message.text:
+        await message.answer(
+            "Пожалуйста, введите название вуза."
+        )
+        return
+
+    await state.update_data(
+        university=message.text.strip()
+    )
+
+    await state.set_state(Registration.course)
+
+    await message.answer(
+        "Какой у тебя курс?",
+        reply_markup=get_course_keyboard(),
+    )
 
 
 @router.callback_query(
@@ -343,7 +364,10 @@ async def process_course(
     state: FSMContext,
 ):
     """
-    Получает курс пользователя и завершает регистрацию.
+    Получает курс пользователя.
+
+    Для РТУ МИРЭА спрашивает институт.
+    Для другого вуза спрашивает направление.
     """
 
     course_labels = {
@@ -358,18 +382,157 @@ async def process_course(
 
     data = await state.get_data()
 
+    if data.get("university") == "РТУ МИРЭА":
+        await state.set_state(Registration.institute)
+
+        await callback.message.edit_text(
+            "Какой у тебя институт?"
+        )
+    else:
+        await state.set_state(Registration.direction)
+
+        await callback.message.edit_text(
+            "Какое у тебя направление?"
+        )
+
+    await callback.answer()
+
+
+@router.message(Registration.institute)
+async def process_institute(
+    message: Message,
+    state: FSMContext,
+):
+    """
+    Получает институт пользователя.
+    """
+
+    if not message.text:
+        await message.answer(
+            "Пожалуйста, введите институт."
+        )
+        return
+
+    await state.update_data(
+        institute=message.text.strip()
+    )
+
+    await state.set_state(Registration.direction)
+
+    await message.answer(
+        "Какое у тебя направление?"
+    )
+
+
+@router.message(Registration.direction)
+async def process_direction(
+    message: Message,
+    state: FSMContext,
+):
+    """
+    Получает направление пользователя.
+
+    Для РТУ МИРЭА продолжает сбор данных.
+    Для другого вуза завершает регистрацию.
+    """
+
+    if not message.text:
+        await message.answer(
+            "Пожалуйста, введите направление."
+        )
+        return
+
+    await state.update_data(
+        direction=message.text.strip()
+    )
+
+    data = await state.get_data()
+
+    if data.get("university") != "РТУ МИРЭА":
+        # В будущем здесь будет обращение к БД
+        # для сохранения данных зарегистрированного пользователя.
+
+        await state.clear()
+
+        await message.answer(
+            "✅ Регистрация завершена!\n\n"
+            f"Фамилия: {data['surname']}\n"
+            f"Имя: {data['name']}\n"
+            f"Отчество: {data['patronymic']}\n"
+            f"Вуз: {data['university']}\n"
+            f"Курс: {data['course']}\n"
+            f"Направление: {data['direction']}"
+        )
+        return
+
+    await state.set_state(Registration.direction_code)
+
+    await message.answer(
+        "Какой код у твоего направления?"
+    )
+
+
+@router.message(Registration.direction_code)
+async def process_direction_code(
+    message: Message,
+    state: FSMContext,
+):
+    """
+    Получает код направления пользователя.
+    """
+
+    if not message.text:
+        await message.answer(
+            "Пожалуйста, введите код направления."
+        )
+        return
+
+    await state.update_data(
+        direction_code=message.text.strip()
+    )
+
+    await state.set_state(Registration.group)
+
+    await message.answer(
+        "Какой номер у твоей группы?"
+    )
+
+
+@router.message(Registration.group)
+async def process_group(
+    message: Message,
+    state: FSMContext,
+):
+    """
+    Получает номер группы и завершает регистрацию.
+    """
+
+    if not message.text:
+        await message.answer(
+            "Пожалуйста, введите номер группы."
+        )
+        return
+
+    await state.update_data(
+        group=message.text.strip()
+    )
+
+    data = await state.get_data()
+
     # В будущем здесь будет обращение к БД
     # для сохранения данных зарегистрированного пользователя.
 
     await state.clear()
 
-    await callback.message.edit_text(
+    await message.answer(
         "✅ Регистрация завершена!\n\n"
         f"Фамилия: {data['surname']}\n"
         f"Имя: {data['name']}\n"
         f"Отчество: {data['patronymic']}\n"
         f"Вуз: {data['university']}\n"
-        f"Курс: {data['course']}"
+        f"Курс: {data['course']}\n"
+        f"Институт: {data['institute']}\n"
+        f"Направление: {data['direction']}\n"
+        f"Код направления: {data['direction_code']}\n"
+        f"Группа: {data['group']}"
     )
-
-    await callback.answer()
