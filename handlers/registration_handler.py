@@ -18,6 +18,8 @@ class Registration(StatesGroup):
     surname = State()
     name = State()
     patronymic = State()
+    university = State()
+    course = State()
 
 
 async def is_user_registered(telegram_id: int) -> bool:
@@ -46,6 +48,64 @@ def get_consent_keyboard() -> InlineKeyboardMarkup:
                     callback_data="consent_accept",
                 )
             ]
+        ]
+    )
+
+
+def get_university_keyboard() -> InlineKeyboardMarkup:
+    """
+    Создаёт inline-клавиатуру с вариантами вуза.
+    """
+
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="РТУ МИРЭА",
+                    callback_data="university_mirea",
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    text="Другой вуз",
+                    callback_data="university_other",
+                )
+            ],
+        ]
+    )
+
+
+def get_course_keyboard() -> InlineKeyboardMarkup:
+    """
+    Создаёт inline-клавиатуру с вариантами курса.
+    """
+
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="1",
+                    callback_data="course_1",
+                ),
+                InlineKeyboardButton(
+                    text="2",
+                    callback_data="course_2",
+                ),
+                InlineKeyboardButton(
+                    text="3",
+                    callback_data="course_3",
+                ),
+                InlineKeyboardButton(
+                    text="4",
+                    callback_data="course_4",
+                ),
+            ],
+            [
+                InlineKeyboardButton(
+                    text="Магистратура",
+                    callback_data="course_magistracy",
+                )
+            ],
         ]
     )
 
@@ -199,7 +259,7 @@ async def process_patronymic(
     state: FSMContext,
 ):
     """
-    Получает отчество пользователя и завершает регистрацию.
+    Получает отчество пользователя и спрашивает вуз.
     """
 
     if not message.text:
@@ -212,6 +272,42 @@ async def process_patronymic(
         patronymic=message.text.strip()
     )
 
+    await state.set_state(Registration.university)
+
+    await message.answer(
+        "Из какого ты вуза?",
+        reply_markup=get_university_keyboard(),
+    )
+
+
+@router.callback_query(
+    Registration.university,
+    F.data.in_({"university_mirea", "university_other"}),
+)
+async def process_university(
+    callback: CallbackQuery,
+    state: FSMContext,
+):
+    """
+    Получает вуз пользователя.
+
+    Для РТУ МИРЭА дополнительно спрашивает курс.
+    Для другого вуза завершает регистрацию.
+    """
+
+    if callback.data == "university_mirea":
+        await state.update_data(university="РТУ МИРЭА")
+        await state.set_state(Registration.course)
+
+        await callback.message.edit_text(
+            "Какой у тебя курс?",
+            reply_markup=get_course_keyboard(),
+        )
+        await callback.answer()
+        return
+
+    await state.update_data(university="Другой вуз")
+
     data = await state.get_data()
 
     # В будущем здесь будет обращение к БД
@@ -219,9 +315,61 @@ async def process_patronymic(
 
     await state.clear()
 
-    await message.answer(
+    await callback.message.edit_text(
         "✅ Регистрация завершена!\n\n"
         f"Фамилия: {data['surname']}\n"
         f"Имя: {data['name']}\n"
-        f"Отчество: {data['patronymic']}"
+        f"Отчество: {data['patronymic']}\n"
+        f"Вуз: {data['university']}"
     )
+
+    await callback.answer()
+
+
+@router.callback_query(
+    Registration.course,
+    F.data.in_(
+        {
+            "course_1",
+            "course_2",
+            "course_3",
+            "course_4",
+            "course_magistracy",
+        }
+    ),
+)
+async def process_course(
+    callback: CallbackQuery,
+    state: FSMContext,
+):
+    """
+    Получает курс пользователя и завершает регистрацию.
+    """
+
+    course_labels = {
+        "course_1": "1",
+        "course_2": "2",
+        "course_3": "3",
+        "course_4": "4",
+        "course_magistracy": "Магистратура",
+    }
+
+    await state.update_data(course=course_labels[callback.data])
+
+    data = await state.get_data()
+
+    # В будущем здесь будет обращение к БД
+    # для сохранения данных зарегистрированного пользователя.
+
+    await state.clear()
+
+    await callback.message.edit_text(
+        "✅ Регистрация завершена!\n\n"
+        f"Фамилия: {data['surname']}\n"
+        f"Имя: {data['name']}\n"
+        f"Отчество: {data['patronymic']}\n"
+        f"Вуз: {data['university']}\n"
+        f"Курс: {data['course']}"
+    )
+
+    await callback.answer()
