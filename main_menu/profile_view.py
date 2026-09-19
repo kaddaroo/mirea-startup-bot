@@ -1,31 +1,11 @@
 from aiogram import Router, F
 from aiogram.types import CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
-# сразу вопрос - прописываем ли эти библиотеки или все библиотеки в один файл запихнем и просто в каждом файле импорт библиотечного сделаем?
-# еще вопрос где это протестить? именно вид в тг, типа прост своего тестового бота зарегать?
 
-import repository
+from placeholders import repository
+
+from keyboard import profile_keyboard
 
 router = Router()
-
-
-def profile_keyboard() -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup(
-        inline_keyboard=[
-            [
-                InlineKeyboardButton(
-                    text="✏️ Редактировать профиль",
-                    callback_data="edit_profile"
-                )
-            ],
-            [
-                InlineKeyboardButton(
-                    text="⬅️ Назад",
-                    callback_data="main_menu"
-                )
-            ]
-        ]
-    )
-
 
 @router.callback_query(F.data == "profile")
 async def show_profile(callback: CallbackQuery):
