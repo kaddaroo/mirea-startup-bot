@@ -52,3 +52,15 @@ def profile_keyboard() -> InlineKeyboardMarkup:
             ]
         ]
     )
+    
+def back_to_main_menu_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="⬅️ Назад",
+                    callback_data="main_menu"
+                )
+            ]
+        ]
+    )
