@@ -1,17 +1,18 @@
 from datetime import datetime
+from zoneinfo import ZoneInfo
 import os
 from dotenv import load_dotenv
 
 load_dotenv()
 
 BOT_TOKEN = os.getenv("BOT_TOKEN")
-CHANNEL_ID = 'StartupClubRTUMIREA'
+CHANNEL_ID = '@StartupClubRTUMIREA'
 
 if not BOT_TOKEN:
     raise ValueError("BOT_TOKEN не найден")
 
-REGISTRATION_DEADLINE = datetime(2026, 9, 26, 12, 0, 0)
-CHANNEL_ID = '@mirea_startup_bot'
+MOSCOW = ZoneInfo('Europe/Moscow')
+REGISTRATION_DEADLINE = datetime(2026, 9, 26, 12, 0, 0, tzinfo=MOSCOW)
 
 UNIVERSITIES = ['РТУ МИРЭА', 'МГТУ им. Баумана', 'МГТУ им. Н.Э. Баумана', 'НИУ ВШЭ', 'МГУ']
 COURSES = ['1', '2', '3', '4', 'Магистратура', 'Аспирантура']

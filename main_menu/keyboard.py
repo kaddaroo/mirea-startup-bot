@@ -1,39 +1,19 @@
-from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
 
 def main_menu_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [
-                InlineKeyboardButton(
-                    text="👤 Профиль",
-                    callback_data="profile"
-                ),
-                InlineKeyboardButton(
-                    text="✏️ Изменить",
-                    callback_data="edit_profile"
-                )
+                InlineKeyboardButton(text="👤 Профиль", callback_data="profile"),
+                InlineKeyboardButton(text="🎫 Мероприятия", callback_data="show_events"),
             ],
             [
-                InlineKeyboardButton(
-                    text="💰 Баланс",
-                    callback_data="balance"
-                )
-            ]
+                InlineKeyboardButton(text="💰 Баланс", callback_data="balance")
+            ],
         ]
     )
 
-def balance_keyboard() -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup(
-        inline_keyboard=[
-            [
-                InlineKeyboardButton(
-                    text="⬅️ Назад",
-                    callback_data="main_menu"
-                )
-            ]
-        ]
-    )
 
 def profile_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
@@ -41,25 +21,39 @@ def profile_keyboard() -> InlineKeyboardMarkup:
             [
                 InlineKeyboardButton(
                     text="✏️ Изменить профиль",
-                    callback_data="edit_profile"
+                    callback_data="edit_profile",
                 )
             ],
             [
                 InlineKeyboardButton(
-                    text="⬅️ Назад",
-                    callback_data="main_menu"
+                    text="⬅️ Главное меню",
+                    callback_data="main_menu",
+                )
+            ],
+        ]
+    )
+
+
+def balance_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="⬅️ Главное меню",
+                    callback_data="main_menu",
                 )
             ]
         ]
     )
-    
+
+
 def back_to_main_menu_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [
                 InlineKeyboardButton(
-                    text="⬅️ Назад",
-                    callback_data="main_menu"
+                    text="⬅️ Главное меню",
+                    callback_data="main_menu",
                 )
             ]
         ]
