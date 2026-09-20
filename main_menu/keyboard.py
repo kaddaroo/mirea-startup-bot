@@ -6,17 +6,17 @@ def main_menu_keyboard() -> InlineKeyboardMarkup:
         inline_keyboard=[
             [
                 InlineKeyboardButton(
-                    text="👤 Мой профиль",
+                    text="👤 Профиль",
                     callback_data="profile"
                 ),
                 InlineKeyboardButton(
-                    text="✏️ Редактировать",
+                    text="✏️ Изменить",
                     callback_data="edit_profile"
                 )
             ],
             [
                 InlineKeyboardButton(
-                    text="💰 Мой баланс",
+                    text="💰 Баланс",
                     callback_data="balance"
                 )
             ]
@@ -40,7 +40,7 @@ def profile_keyboard() -> InlineKeyboardMarkup:
         inline_keyboard=[
             [
                 InlineKeyboardButton(
-                    text="✏️ Редактировать профиль",
+                    text="✏️ Изменить профиль",
                     callback_data="edit_profile"
                 )
             ],

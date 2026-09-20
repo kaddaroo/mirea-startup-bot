@@ -3,7 +3,7 @@ from aiogram.types import CallbackQuery, InlineKeyboardMarkup, InlineKeyboardBut
 
 from placeholders import repository
 
-from keyboard import profile_keyboard
+from main_menu.keyboard import profile_keyboard
 
 router = Router()
 
