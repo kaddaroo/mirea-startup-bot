@@ -1,0 +1,6 @@
+aiogram
+pymysql
+python-dotenv
+SQLAlchemy>=1.4
+aiomysql
+alembic
