@@ -1,0 +1,4 @@
+aiogram==3.31.0
+aiomysql==0.3.2
+pymysql==1.2.3
+python-dotenv==1.2.3
