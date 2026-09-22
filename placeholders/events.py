@@ -8,6 +8,7 @@ from aiogram.types import (
     InlineKeyboardButton,
     InlineKeyboardMarkup,
     Message,
+    LinkPreviewOptions
 )
 
 from config import CHANNEL_ID, MOSCOW
@@ -16,6 +17,7 @@ from ui_helpers import replace_callback_with_photo, replace_callback_with_text
 
 router = Router()
 
+STARTUP_CLUB_URL = "https://t.me/StartupClubRTUMIREA"
 
 keyboard_event_list = InlineKeyboardMarkup(
     inline_keyboard=[
@@ -179,20 +181,21 @@ async def _show_event_card(callback: CallbackQuery, event_id: int) -> None:
         closed=closed,
     )
 
-    photo_file_id = event.get("photo_file_id")
-    if photo_file_id:
-        await replace_callback_with_photo(
-            callback,
-            photo=photo_file_id,
-            caption=get_event_caption(event),
-            reply_markup=keyboard,
-        )
-        return
+    text = (
+    f'<a href="{STARTUP_CLUB_URL}">🚀 Стартап-клуб</a>\n\n'
+    + get_event_text(event)
+    )
 
     await replace_callback_with_text(
         callback,
-        get_event_text(event),
+        text,
         reply_markup=keyboard,
+        parse_mode="HTML",
+        link_preview_options=LinkPreviewOptions(
+            url=STARTUP_CLUB_URL,
+            show_above_text=False,
+            prefer_large_media=True,
+        ),
     )
 
 

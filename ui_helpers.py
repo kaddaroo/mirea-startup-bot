@@ -1,5 +1,9 @@
 from aiogram.exceptions import TelegramBadRequest
-from aiogram.types import CallbackQuery, InlineKeyboardMarkup
+from aiogram.types import (
+    CallbackQuery,
+    InlineKeyboardMarkup,
+    LinkPreviewOptions,
+)
 
 
 async def replace_callback_with_text(
@@ -7,6 +11,7 @@ async def replace_callback_with_text(
     text: str,
     reply_markup: InlineKeyboardMarkup | None = None,
     parse_mode: str | None = None,
+    link_preview_options: LinkPreviewOptions | None = None,
 ):
     message = callback.message
 
@@ -26,6 +31,7 @@ async def replace_callback_with_text(
                 text,
                 reply_markup=reply_markup,
                 parse_mode=parse_mode,
+                link_preview_options=link_preview_options,
             )
         except TelegramBadRequest:
             pass
@@ -40,6 +46,7 @@ async def replace_callback_with_text(
         text=text,
         reply_markup=reply_markup,
         parse_mode=parse_mode,
+        link_preview_options=link_preview_options,
     )
 
 
