@@ -17,6 +17,8 @@ from main_menu.keyboard import main_menu_keyboard
 from placeholders import runtime_repository as repository
 from university_matcher import find_best_universities, string_normalise
 
+from ui_helpers import safe_callback_answer, safe_edit_callback_text
+
 router = Router()
 
 
@@ -261,17 +263,17 @@ async def show_consent(message: Message, state: FSMContext) -> None:
 
 
 async def _start_profile_edit(callback: CallbackQuery, state: FSMContext) -> None:
+    await safe_callback_answer(callback)
     await state.clear()
     await state.update_data(
         wizard_message_id=callback.message.message_id,
         editing=True,
     )
     await state.set_state(Registration.surname)
-    await callback.message.edit_text(
+    await safe_edit_callback_text(callback, 
         "✏️ Редактирование профиля\n\nВведите вашу фамилию.\nНапример: Иванов",
         reply_markup=_nav_keyboard(),
     )
-    await callback.answer()
 
 
 async def _show_step(callback: CallbackQuery, state: FSMContext, step: str) -> None:
@@ -319,11 +321,9 @@ async def _show_step(callback: CallbackQuery, state: FSMContext, step: str) -> N
         text = "Введите наименование группы.\nНапример: ЭФБО-02-26"
         keyboard = _nav_keyboard("direction_code")
     else:
-        await callback.answer()
         return
 
-    await callback.message.edit_text(text, reply_markup=keyboard)
-    await callback.answer()
+    await safe_edit_callback_text(callback, text, reply_markup=keyboard)
 
 
 async def _finish_form(
@@ -434,15 +434,15 @@ async def start_handler(message: Message, state: FSMContext, command: CommandObj
 
 @router.callback_query(F.data == "continue_registration")
 async def continue_registration(callback: CallbackQuery, state: FSMContext):
-    await callback.answer()
+    await safe_callback_answer(callback)
     if await is_user_registered(callback.from_user.id):
         await state.clear()
-        await callback.message.edit_text("🏠 Главное меню", reply_markup=main_menu_keyboard())
+        await safe_edit_callback_text(callback, "🏠 Главное меню", reply_markup=main_menu_keyboard())
         return
     await state.clear()
     await state.set_state(Registration.consent)
     await state.update_data(wizard_message_id=callback.message.message_id, editing=False)
-    await callback.message.edit_text(
+    await safe_edit_callback_text(callback, 
         "👋 Продолжим регистрацию.\n\nДля начала подтвердите согласие на обработку персональных данных.",
         reply_markup=get_consent_keyboard(),
     )
@@ -455,35 +455,36 @@ async def edit_profile(callback: CallbackQuery, state: FSMContext):
 
 @router.callback_query(F.data == "form_cancel")
 async def cancel_form(callback: CallbackQuery, state: FSMContext):
+    await safe_callback_answer(callback)
     user = await repository.find_user(callback.from_user.id)
     await state.clear()
 
     if user is not None:
-        await callback.message.edit_text(
+        await safe_edit_callback_text(callback, 
             "🏠 Главное меню",
             reply_markup=main_menu_keyboard(),
         )
     else:
-        await callback.message.edit_text(
+        await safe_edit_callback_text(callback, 
             "Регистрация отменена. Чтобы начать заново, отправьте /start."
         )
-    await callback.answer()
 
 
 @router.callback_query(F.data.startswith("form_back:"))
 async def form_back(callback: CallbackQuery, state: FSMContext):
+    await safe_callback_answer(callback)
     target = callback.data.split(":", 1)[1]
     await _show_step(callback, state, target)
 
 
 @router.callback_query(Registration.consent, F.data == "consent_accept")
 async def accept_consent(callback: CallbackQuery, state: FSMContext):
+    await safe_callback_answer(callback)
     await state.set_state(Registration.surname)
-    await callback.message.edit_text(
+    await safe_edit_callback_text(callback, 
         "Введите вашу фамилию.\nНапример: Иванов",
         reply_markup=_nav_keyboard(),
     )
-    await callback.answer()
 
 
 @router.message(Registration.surname)
@@ -545,11 +546,17 @@ async def process_patronymic(message: Message, bot: Bot, state: FSMContext):
     F.data.in_({"university_mirea", "university_other"}),
 )
 async def process_university(callback: CallbackQuery, state: FSMContext):
+    await safe_callback_answer(callback)
+
     if callback.data == "university_mirea":
         universities = await repository.get_universities()
         mirea = next((item for item in universities if _is_mirea(item)), None)
         if mirea is None:
-            await callback.answer("МИРЭА не найден в базе", show_alert=True)
+            await safe_edit_callback_text(
+                callback,
+                "⚠️ МИРЭА не найден в базе. Попробуйте позже.",
+                reply_markup=get_university_keyboard(),
+            )
             return
 
         await _save_selected_university(state, mirea)
@@ -652,19 +659,23 @@ async def process_other_university(message: Message, bot: Bot, state: FSMContext
     F.data.startswith("university_pick:"),
 )
 async def pick_university(callback: CallbackQuery, state: FSMContext):
+    await safe_callback_answer(callback)
     university_id = int(callback.data.split(":", 1)[1])
     university = await repository.get_university(university_id)
     if university is None:
-        await callback.answer("Вуз не найден", show_alert=True)
+        await safe_edit_callback_text(
+            callback,
+            "⚠️ Вуз не найден. Выберите вуз ещё раз.",
+            reply_markup=get_university_keyboard(),
+        )
         return
 
     await _save_selected_university(state, university)
     await state.set_state(Registration.course)
-    await callback.message.edit_text(
+    await safe_edit_callback_text(callback, 
         f"✅ Выбран: {university['name']}\n\nКакой у тебя курс?",
         reply_markup=get_course_keyboard(),
     )
-    await callback.answer()
 
 
 @router.callback_query(
@@ -672,11 +683,17 @@ async def pick_university(callback: CallbackQuery, state: FSMContext):
     F.data == "custom_university_confirm",
 )
 async def confirm_custom_university(callback: CallbackQuery, state: FSMContext):
+    await safe_callback_answer(callback)
     data = await state.get_data()
     name = data.get("pending_university")
 
     if not name:
-        await callback.answer("Название вуза потеряно", show_alert=True)
+        await safe_edit_callback_text(
+            callback,
+            "⚠️ Название вуза потеряно. Введите его ещё раз.",
+            reply_markup=_nav_keyboard("university"),
+        )
+        await state.set_state(Registration.other_university)
         return
 
     university = await repository.create_university(name)
@@ -689,6 +706,7 @@ async def confirm_custom_university(callback: CallbackQuery, state: FSMContext):
     F.data == "custom_university_retry",
 )
 async def retry_custom_university(callback: CallbackQuery, state: FSMContext):
+    await safe_callback_answer(callback)
     await _show_step(callback, state, "other_university")
 
 
@@ -697,6 +715,7 @@ async def retry_custom_university(callback: CallbackQuery, state: FSMContext):
     F.data.in_({"course_1", "course_2", "course_3", "course_4", "course_magistracy"}),
 )
 async def process_course(callback: CallbackQuery, state: FSMContext):
+    await safe_callback_answer(callback)
     course_labels = {
         "course_1": "1",
         "course_2": "2",

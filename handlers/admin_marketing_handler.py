@@ -6,6 +6,8 @@ from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMar
 from handlers.admin_panel_handler import admin_menu_keyboard, is_admin
 from placeholders import runtime_repository as repository
 
+from ui_helpers import safe_callback_answer, safe_edit_callback_text
+
 router = Router()
 
 
@@ -24,12 +26,12 @@ def nav() -> InlineKeyboardMarkup:
 
 @router.callback_query(F.data == "admin_marketing_create")
 async def marketing_start(callback: CallbackQuery, state: FSMContext):
-    await callback.answer()
+    await safe_callback_answer(callback)
     if not is_admin(callback.from_user.id):
         return
     await state.clear()
     await state.set_state(MarketingCreate.event_id)
-    await callback.message.edit_text(
+    await safe_edit_callback_text(callback, 
         "🔗 Новая маркетинговая ссылка\n\nВведите ID мероприятия.\nНапример: 12\nЕсли ссылка общая, отправьте 0.",
         reply_markup=nav(),
     )
@@ -97,7 +99,7 @@ async def marketing_placement(message: Message, bot: Bot, state: FSMContext):
 
 @router.callback_query(F.data == "admin_marketing_stats")
 async def marketing_stats(callback: CallbackQuery):
-    await callback.answer()
+    await safe_callback_answer(callback)
     if not is_admin(callback.from_user.id):
         return
     rows = await repository.marketing_stats(30)
@@ -114,4 +116,4 @@ async def marketing_stats(callback: CallbackQuery):
                 f"Переходы: {visits} · регистрации: {regs} · {conversion:.1f}%"
             )
         text = "\n\n".join(lines)
-    await callback.message.edit_text(text, reply_markup=admin_menu_keyboard())
+    await safe_edit_callback_text(callback, text, reply_markup=admin_menu_keyboard())

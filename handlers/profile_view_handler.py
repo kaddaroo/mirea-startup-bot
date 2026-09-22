@@ -1,3 +1,5 @@
+from html import escape
+
 from aiogram import F, Router
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
@@ -5,7 +7,7 @@ from aiogram.types import CallbackQuery, Message
 
 from main_menu.keyboard import main_menu_keyboard, profile_keyboard
 from placeholders import runtime_repository as repository
-from ui_helpers import replace_callback_with_text
+from ui_helpers import replace_callback_with_text, safe_callback_answer, safe_edit_callback_text
 
 router = Router()
 
@@ -34,11 +36,11 @@ async def _build_profile_text(telegram_id: int) -> str | None:
 
     return (
         "👤 <b>Ваш профиль</b>\n\n"
-        f"ФИО: {full_name}\n"
-        f"🎓 Вуз: {university_name}\n"
-        f"🏫 Институт: {user.get('institute') or '—'}\n"
-        f"📚 Код направления: {user.get('direction_code') or '—'}\n"
-        f"👥 Группа: {user.get('group_name') or '—'}\n"
+        f"ФИО: {escape(str(full_name))}\n"
+        f"🎓 Вуз: {escape(str(university_name))}\n"
+        f"🏫 Институт: {escape(str(user.get('institute') or '—'))}\n"
+        f"📚 Код направления: {escape(str(user.get('direction_code') or '—'))}\n"
+        f"👥 Группа: {escape(str(user.get('group_name') or '—'))}\n"
         f"💰 Коины: {user.get('coins', 0)}"
     )
 
@@ -62,22 +64,22 @@ async def menu_command(message: Message, state: FSMContext):
 
 @router.callback_query(F.data == "main_menu")
 async def show_main_menu(callback: CallbackQuery, state: FSMContext):
+    await safe_callback_answer(callback)
     await state.clear()
     await replace_callback_with_text(
         callback,
         "🏠 Главное меню",
         reply_markup=main_menu_keyboard(),
     )
-    await callback.answer()
 
 
 @router.callback_query(F.data == "profile")
 async def show_profile(callback: CallbackQuery):
-    await callback.answer()
+    await safe_callback_answer(callback)
     text = await _build_profile_text(callback.from_user.id)
 
     if text is None:
-        await callback.message.edit_text("Профиль не найден.")
+        await safe_edit_callback_text(callback, "Профиль не найден.")
         return
 
     await replace_callback_with_text(

@@ -7,6 +7,8 @@ from aiogram.types import BufferedInputFile, CallbackQuery, InlineKeyboardButton
 from handlers.admin_panel_handler import admin_menu_keyboard, is_admin
 from placeholders import runtime_repository as repository
 
+from ui_helpers import safe_callback_answer, safe_edit_callback_text
+
 router = Router()
 
 
@@ -26,15 +28,19 @@ def _event_admin_keyboard(event_id: int, checkin_open: bool) -> InlineKeyboardMa
 @router.callback_query(F.data.startswith("admin_event_manage:"))
 async def manage_event(callback: CallbackQuery):
     if not is_admin(callback.from_user.id):
-        await callback.answer("Нет доступа", show_alert=True)
+        await safe_callback_answer(callback, "Нет доступа", show_alert=True)
         return
-    await callback.answer()
+    await safe_callback_answer(callback)
     event_id = int(callback.data.split(":", 1)[1])
     event = await repository.get_event(event_id)
     if not event:
-        await callback.answer("Мероприятие не найдено", show_alert=True)
+        await safe_edit_callback_text(
+            callback,
+            "⚠️ Мероприятие не найдено.",
+            reply_markup=admin_menu_keyboard(),
+        )
         return
-    await callback.message.edit_text(
+    await safe_edit_callback_text(callback, 
         f"🛠 #{event['id']} — {event['name']}\n\n"
         f"Check-in: {'открыт' if event.get('checkin_open') else 'закрыт'}",
         reply_markup=_event_admin_keyboard(event_id, bool(event.get("checkin_open"))),
@@ -44,12 +50,12 @@ async def manage_event(callback: CallbackQuery):
 @router.callback_query(F.data.startswith("admin_checkin_open:"))
 async def open_checkin(callback: CallbackQuery):
     if not is_admin(callback.from_user.id):
-        await callback.answer("Нет доступа", show_alert=True)
+        await safe_callback_answer(callback, "Нет доступа", show_alert=True)
         return
-    await callback.answer()
+    await safe_callback_answer(callback)
     event_id = int(callback.data.split(":", 1)[1])
     await repository.set_checkin_open(event_id, True)
-    await callback.message.edit_text(
+    await safe_edit_callback_text(callback, 
         "🟢 Check-in открыт. Теперь QR отмечает присутствие и сразу начисляет коины.",
         reply_markup=_event_admin_keyboard(event_id, True),
     )
@@ -58,12 +64,12 @@ async def open_checkin(callback: CallbackQuery):
 @router.callback_query(F.data.startswith("admin_checkin_close:"))
 async def close_checkin(callback: CallbackQuery):
     if not is_admin(callback.from_user.id):
-        await callback.answer("Нет доступа", show_alert=True)
+        await safe_callback_answer(callback, "Нет доступа", show_alert=True)
         return
-    await callback.answer()
+    await safe_callback_answer(callback)
     event_id = int(callback.data.split(":", 1)[1])
     await repository.set_checkin_open(event_id, False)
-    await callback.message.edit_text(
+    await safe_edit_callback_text(callback, 
         "🔴 Check-in закрыт. QR больше не отмечает присутствие.",
         reply_markup=_event_admin_keyboard(event_id, False),
     )
@@ -72,18 +78,26 @@ async def close_checkin(callback: CallbackQuery):
 @router.callback_query(F.data.startswith("admin_event_qr:"))
 async def event_qr(callback: CallbackQuery):
     if not is_admin(callback.from_user.id):
-        await callback.answer("Нет доступа", show_alert=True)
+        await safe_callback_answer(callback, "Нет доступа", show_alert=True)
         return
-    await callback.answer()
+    await safe_callback_answer(callback)
 
     event_id = int(callback.data.split(":", 1)[1])
     event = await repository.get_event(event_id)
     if not event:
-        await callback.answer("Мероприятие не найдено", show_alert=True)
+        await safe_edit_callback_text(
+            callback,
+            "⚠️ Мероприятие не найдено.",
+            reply_markup=admin_menu_keyboard(),
+        )
         return
     token = event.get("checkin_token") or await repository.ensure_event_checkin_token(event_id)
     if not token:
-        await callback.answer("Не удалось создать check-in token", show_alert=True)
+        await safe_edit_callback_text(
+            callback,
+            "⚠️ Не удалось создать check-in token.",
+            reply_markup=_event_admin_keyboard(event_id, bool(event.get("checkin_open"))),
+        )
         return
 
     me = await callback.bot.get_me()

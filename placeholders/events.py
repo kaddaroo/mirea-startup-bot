@@ -1,4 +1,5 @@
 import re
+from html import escape
 from datetime import datetime
 
 from aiogram import Bot, F, Router
@@ -13,7 +14,7 @@ from aiogram.types import (
 
 from config import CHANNEL_ID, MOSCOW
 from placeholders import runtime_repository as repository
-from ui_helpers import replace_callback_with_photo, replace_callback_with_text
+from ui_helpers import replace_callback_with_photo, replace_callback_with_text, safe_callback_answer
 
 router = Router()
 
@@ -182,8 +183,8 @@ async def _show_event_card(callback: CallbackQuery, event_id: int) -> None:
     )
 
     text = (
-    f'<a href="{STARTUP_CLUB_URL}">🚀 Стартап-клуб</a>\n\n'
-    + get_event_text(event)
+        f'<a href="{STARTUP_CLUB_URL}">🚀 Стартап-клуб</a>\n\n'
+        + escape(get_event_text(event))
     )
 
     await replace_callback_with_text(
@@ -315,12 +316,12 @@ async def capture_event_photo_from_channel(message: Message):
 
 @router.callback_query(F.data == "noop")
 async def noop(callback: CallbackQuery):
-    await callback.answer()
+    await safe_callback_answer(callback)
 
 
 @router.callback_query(F.data == "show_events")
 async def show_available_events(callback: CallbackQuery):
-    await callback.answer()
+    await safe_callback_answer(callback)
 
     events = await repository.get_available_events()
     if not events:
@@ -357,14 +358,14 @@ async def show_available_events(callback: CallbackQuery):
 
 @router.callback_query(F.data.startswith("event:"))
 async def show_event(callback: CallbackQuery):
-    await callback.answer()
+    await safe_callback_answer(callback)
     event_id = int(callback.data.split(":", 1)[1])
     await _show_event_card(callback, event_id)
 
 
 @router.callback_query(F.data.startswith("register_event:"))
 async def registration_on_event(callback: CallbackQuery, bot: Bot):
-    await callback.answer()
+    await safe_callback_answer(callback)
 
     event_id = int(callback.data.split(":", 1)[1])
     event = await _validate_event_for_registration(callback, event_id)
@@ -396,7 +397,7 @@ async def registration_on_event(callback: CallbackQuery, bot: Bot):
 
 @router.callback_query(F.data.startswith("check_subscription:"))
 async def check_subscription(callback: CallbackQuery, bot: Bot):
-    await callback.answer()
+    await safe_callback_answer(callback)
 
     event_id = int(callback.data.split(":", 1)[1])
     event = await _validate_event_for_registration(callback, event_id)

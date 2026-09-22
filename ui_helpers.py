@@ -6,6 +6,56 @@ from aiogram.types import (
 )
 
 
+async def safe_callback_answer(
+    callback: CallbackQuery,
+    text: str | None = None,
+    show_alert: bool = False,
+) -> bool:
+    """Answer a callback without crashing on an expired Telegram query.
+
+    Returns True when Telegram accepted the answer and False when the
+    callback query had already expired. Other Telegram errors are re-raised.
+    """
+    try:
+        await callback.answer(text=text, show_alert=show_alert)
+        return True
+    except TelegramBadRequest as error:
+        error_text = str(error).lower()
+        expired_markers = (
+            "query is too old",
+            "query id is invalid",
+            "response timeout expired",
+        )
+        if any(marker in error_text for marker in expired_markers):
+            return False
+        raise
+
+
+async def safe_edit_callback_text(
+    callback: CallbackQuery,
+    text: str,
+    reply_markup: InlineKeyboardMarkup | None = None,
+    parse_mode: str | None = None,
+    link_preview_options: LinkPreviewOptions | None = None,
+):
+    """Edit a callback message and ignore harmless duplicate-edit errors."""
+    message = callback.message
+    if message is None:
+        return None
+
+    try:
+        return await message.edit_text(
+            text,
+            reply_markup=reply_markup,
+            parse_mode=parse_mode,
+            link_preview_options=link_preview_options,
+        )
+    except TelegramBadRequest as error:
+        if "message is not modified" in str(error).lower():
+            return message
+        raise
+
+
 async def replace_callback_with_text(
     callback: CallbackQuery,
     text: str,

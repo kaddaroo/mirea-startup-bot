@@ -14,7 +14,7 @@ from aiogram.types import (
 
 from config import ADMIN_IDS, MOSCOW
 from placeholders import runtime_repository as repository
-from ui_helpers import replace_callback_with_text
+from ui_helpers import replace_callback_with_text, safe_callback_answer
 
 router = Router()
 DATE_FORMAT = "%d.%m.%Y %H:%M"
@@ -160,6 +160,8 @@ async def callback_wizard(
 
 
 async def show_step(callback: CallbackQuery, state: FSMContext, step: str) -> None:
+    await safe_callback_answer(callback)
+
     if step == "name":
         await state.set_state(EventCreate.name)
         text = "➕ Новое мероприятие\n\nВведите название.\nНапример: Startup Meetup #5"
@@ -197,11 +199,9 @@ async def show_step(callback: CallbackQuery, state: FSMContext, step: str) -> No
         text = "Отправьте фото мероприятия одним изображением или нажмите «Без фото»."
         keyboard = wizard_keyboard("deadline", photo_step=True)
     else:
-        await callback.answer()
         return
 
     await callback_wizard(callback, state, text, keyboard)
-    await callback.answer()
 
 
 async def show_preview_from_message(message: Message, bot: Bot, state: FSMContext) -> None:
@@ -235,10 +235,10 @@ async def show_preview_from_message(message: Message, bot: Bot, state: FSMContex
 
 
 async def show_preview_from_callback(callback: CallbackQuery, state: FSMContext) -> None:
+    await safe_callback_answer(callback)
     data = await state.get_data()
     await state.set_state(EventCreate.confirm)
     await callback_wizard(callback, state, preview_text(data), confirm_keyboard())
-    await callback.answer()
 
 
 async def reject_non_admin_message(message: Message) -> None:
@@ -267,19 +267,22 @@ async def admin_command(message: Message, state: FSMContext):
 @router.callback_query(F.data == "admin_menu")
 async def admin_menu(callback: CallbackQuery, state: FSMContext):
     if not is_admin(callback.from_user.id):
-        await callback.answer("Нет доступа", show_alert=True)
+        await safe_callback_answer(callback, "Нет доступа", show_alert=True)
         return
+
+    await safe_callback_answer(callback)
 
     await state.clear()
     await callback_wizard(callback, state, "🛠 Админ-панель", admin_menu_keyboard())
-    await callback.answer()
 
 
 @router.callback_query(F.data == "admin_event_create")
 async def create_event_start(callback: CallbackQuery, state: FSMContext):
     if not is_admin(callback.from_user.id):
-        await callback.answer("Нет доступа", show_alert=True)
+        await safe_callback_answer(callback, "Нет доступа", show_alert=True)
         return
+
+    await safe_callback_answer(callback)
 
     await state.clear()
     await state.update_data(admin_wizard_message_id=callback.message.message_id)
@@ -290,24 +293,24 @@ async def create_event_start(callback: CallbackQuery, state: FSMContext):
         "➕ Новое мероприятие\n\nВведите название.\nНапример: Startup Meetup #5",
         wizard_keyboard(),
     )
-    await callback.answer()
 
 
 @router.callback_query(F.data == "admin_event_cancel")
 async def cancel_event_create(callback: CallbackQuery, state: FSMContext):
     if not is_admin(callback.from_user.id):
-        await callback.answer("Нет доступа", show_alert=True)
+        await safe_callback_answer(callback, "Нет доступа", show_alert=True)
         return
+
+    await safe_callback_answer(callback)
 
     await state.clear()
     await callback_wizard(callback, state, "🛠 Создание мероприятия отменено.", admin_menu_keyboard())
-    await callback.answer()
 
 
 @router.callback_query(F.data.startswith("admin_event_back:"))
 async def event_back(callback: CallbackQuery, state: FSMContext):
     if not is_admin(callback.from_user.id):
-        await callback.answer("Нет доступа", show_alert=True)
+        await safe_callback_answer(callback, "Нет доступа", show_alert=True)
         return
 
     target = callback.data.split(":", 1)[1]
@@ -525,7 +528,7 @@ async def event_photo_invalid(message: Message, bot: Bot, state: FSMContext):
 @router.callback_query(EventCreate.photo, F.data == "admin_event_photo_skip")
 async def event_photo_skip(callback: CallbackQuery, state: FSMContext):
     if not is_admin(callback.from_user.id):
-        await callback.answer("Нет доступа", show_alert=True)
+        await safe_callback_answer(callback, "Нет доступа", show_alert=True)
         return
 
     await state.update_data(photo_file_id=None)
@@ -535,8 +538,10 @@ async def event_photo_skip(callback: CallbackQuery, state: FSMContext):
 @router.callback_query(EventCreate.confirm, F.data == "admin_event_save")
 async def event_save(callback: CallbackQuery, state: FSMContext):
     if not is_admin(callback.from_user.id):
-        await callback.answer("Нет доступа", show_alert=True)
+        await safe_callback_answer(callback, "Нет доступа", show_alert=True)
         return
+
+    await safe_callback_answer(callback)
 
     data = await state.get_data()
     try:
@@ -553,7 +558,12 @@ async def event_save(callback: CallbackQuery, state: FSMContext):
         )
     except Exception as error:
         print("Admin event create failed:", repr(error))
-        await callback.answer("Ошибка записи в БД", show_alert=True)
+        await callback_wizard(
+            callback,
+            state,
+            "⚠️ Не удалось сохранить мероприятие в БД. Попробуйте ещё раз.",
+            confirm_keyboard(),
+        )
         return
 
     await state.clear()
@@ -568,14 +578,15 @@ async def event_save(callback: CallbackQuery, state: FSMContext):
             [InlineKeyboardButton(text="⬅️ Админ-панель", callback_data="admin_menu")],
         ]),
     )
-    await callback.answer()
 
 
 @router.callback_query(F.data == "admin_events_list")
 async def admin_events_list(callback: CallbackQuery, state: FSMContext):
     if not is_admin(callback.from_user.id):
-        await callback.answer("Нет доступа", show_alert=True)
+        await safe_callback_answer(callback, "Нет доступа", show_alert=True)
         return
+
+    await safe_callback_answer(callback)
 
     await state.clear()
     events = await repository.get_admin_events(limit=20)
@@ -605,4 +616,3 @@ async def admin_events_list(callback: CallbackQuery, state: FSMContext):
     ])
     keyboard = InlineKeyboardMarkup(inline_keyboard=rows)
     await callback_wizard(callback, state, text, keyboard)
-    await callback.answer()
