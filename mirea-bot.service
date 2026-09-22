@@ -1,0 +1,17 @@
+#/etc/systemd/system
+[Unit]
+Description=Mirea startub bot
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/root/v2.1/mirea-startup-bot
+ExecStart=/root/v2.1/mirea-startup-bot/cycle_bot.sh
+Restart=always
+RestartSec=5
+StandardOutput=append:/var/log/myapp.log
+StandardError=append:/var/log/myapp.log
+
+[Install]
+WantedBy=multi-user.target
