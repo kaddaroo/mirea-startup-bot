@@ -5,6 +5,7 @@ from aiogram.types import CallbackQuery, Message
 
 from main_menu.keyboard import main_menu_keyboard, profile_keyboard
 from placeholders import runtime_repository as repository
+from ui_helpers import replace_callback_with_text
 
 router = Router()
 
@@ -62,7 +63,8 @@ async def menu_command(message: Message, state: FSMContext):
 @router.callback_query(F.data == "main_menu")
 async def show_main_menu(callback: CallbackQuery, state: FSMContext):
     await state.clear()
-    await callback.message.edit_text(
+    await replace_callback_with_text(
+        callback,
         "🏠 Главное меню",
         reply_markup=main_menu_keyboard(),
     )
@@ -71,15 +73,16 @@ async def show_main_menu(callback: CallbackQuery, state: FSMContext):
 
 @router.callback_query(F.data == "profile")
 async def show_profile(callback: CallbackQuery):
+    await callback.answer()
     text = await _build_profile_text(callback.from_user.id)
 
     if text is None:
-        await callback.answer("Профиль не найден", show_alert=True)
+        await callback.message.edit_text("Профиль не найден.")
         return
 
-    await callback.message.edit_text(
+    await replace_callback_with_text(
+        callback,
         text,
         reply_markup=profile_keyboard(),
         parse_mode="HTML",
     )
-    await callback.answer()

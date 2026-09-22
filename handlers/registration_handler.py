@@ -1,6 +1,8 @@
+import re
+
 from aiogram import Bot, F, Router
 from aiogram.exceptions import TelegramBadRequest
-from aiogram.filters import CommandStart
+from aiogram.filters import CommandObject, CommandStart
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import (
@@ -10,6 +12,7 @@ from aiogram.types import (
     Message,
 )
 
+from config import COINS_PER_ATTENDANCE
 from main_menu.keyboard import main_menu_keyboard
 from placeholders import runtime_repository as repository
 from university_matcher import find_best_universities, string_normalise
@@ -24,6 +27,7 @@ class Registration(StatesGroup):
     patronymic = State()
     university = State()
     other_university = State()
+    confirm_custom_university = State()
     course = State()
     institute = State()
     direction = State()
@@ -130,6 +134,19 @@ def get_course_keyboard() -> InlineKeyboardMarkup:
     )
 
 
+def _normalise_name_part(value: str) -> str | None:
+    value = value.strip()
+
+    if not value:
+        return None
+
+    parts = value.split("-")
+    if any(not part or not part.isalpha() for part in parts):
+        return None
+
+    return "-".join(part[0].upper() + part[1:].lower() for part in parts)
+
+
 def _is_mirea(university: dict) -> bool:
     name = string_normalise(str(university.get("name") or ""))
     short_name = string_normalise(str(university.get("short_name") or ""))
@@ -219,7 +236,10 @@ async def save_user_profile(message: Message, data: dict) -> bool:
             direction_code=data.get("direction_code"),
             group_name=data.get("group"),
         )
-        return user is not None
+        if user is not None:
+            await repository.mark_lead_completed(message.from_user.id)
+            return True
+        return False
     except Exception as error:
         print("Failed to save user registration:", repr(error))
         return False
@@ -248,7 +268,7 @@ async def _start_profile_edit(callback: CallbackQuery, state: FSMContext) -> Non
     )
     await state.set_state(Registration.surname)
     await callback.message.edit_text(
-        "✏️ Редактирование профиля\n\nВведите вашу фамилию:",
+        "✏️ Редактирование профиля\n\nВведите вашу фамилию.\nНапример: Иванов",
         reply_markup=_nav_keyboard(),
     )
     await callback.answer()
@@ -259,19 +279,19 @@ async def _show_step(callback: CallbackQuery, state: FSMContext, step: str) -> N
 
     if step == "surname":
         await state.set_state(Registration.surname)
-        text = "Введите вашу фамилию:"
+        text = "Введите вашу фамилию.\nНапример: Иванов"
         keyboard = _nav_keyboard()
     elif step == "name":
         await state.set_state(Registration.name)
-        text = "Введите ваше имя:"
+        text = "Введите ваше имя.\nНапример: Иван"
         keyboard = _nav_keyboard("surname")
     elif step == "patronymic":
         await state.set_state(Registration.patronymic)
-        text = "Введите ваше отчество:"
+        text = "Введите ваше отчество.\nНапример: Иванович"
         keyboard = _nav_keyboard("name")
     elif step == "university":
         await state.set_state(Registration.university)
-        text = "Из какого ты вуза?"
+        text = "Из какого ты вуза?\nНапример: РТУ МИРЭА"
         keyboard = get_university_keyboard()
     elif step == "other_university":
         await state.set_state(Registration.other_university)
@@ -283,20 +303,20 @@ async def _show_step(callback: CallbackQuery, state: FSMContext, step: str) -> N
         keyboard = get_course_keyboard()
     elif step == "institute":
         await state.set_state(Registration.institute)
-        text = "Какой у тебя институт?"
+        text = "Введите название института.\nНапример: ИПТИП"
         keyboard = _nav_keyboard("course")
     elif step == "direction":
         await state.set_state(Registration.direction)
         back_to = "institute" if data.get("is_mirea") else "course"
-        text = "Какое у тебя направление?"
+        text = "Введите название направления.\nНапример: Информатика и вычислительная техника"
         keyboard = _nav_keyboard(back_to)
     elif step == "direction_code":
         await state.set_state(Registration.direction_code)
-        text = "Какой код у твоего направления?"
+        text = "Введите код направления.\nНапример: 09.03.02"
         keyboard = _nav_keyboard("direction")
     elif step == "group":
         await state.set_state(Registration.group)
-        text = "Какой номер у твоей группы?"
+        text = "Введите наименование группы.\nНапример: ЭФБО-02-26"
         keyboard = _nav_keyboard("direction_code")
     else:
         await callback.answer()
@@ -345,19 +365,87 @@ async def _finish_form(
 
 
 @router.message(CommandStart())
-async def start_handler(message: Message, state: FSMContext):
+async def start_handler(message: Message, state: FSMContext, command: CommandObject):
     if not message.from_user:
         return
 
-    if await is_user_registered(message.from_user.id):
+    user_id = message.from_user.id
+    await repository.upsert_lead(
+        user_id,
+        message.from_user.username,
+        message.from_user.first_name,
+        last_step="start",
+    )
+
+    payload = (command.args or "").strip()
+
+    if payload.startswith("checkin_"):
+        token = payload[len("checkin_"):]
+        result = await repository.checkin_by_token(user_id, token, COINS_PER_ATTENDANCE)
+        status = result.get("status")
+        event = result.get("event") or {}
+        if status == "ok":
+            await message.answer(
+                f"✅ Посещение «{event.get('name', 'мероприятия')}» отмечено!\n"
+                f"🪙 Начислено {COINS_PER_ATTENDANCE} коина."
+            )
+        elif status == "already":
+            await message.answer("✅ Вы уже отметились на этом мероприятии.")
+        elif status == "closed":
+            await message.answer("🔒 Отметка посещения сейчас закрыта. Покажите QR администратору мероприятия.")
+        elif status == "not_registered_event":
+            await message.answer("Вы не были зарегистрированы на это мероприятие, поэтому отметить посещение через этот QR нельзя.")
+        elif status == "not_registered_bot":
+            await message.answer("Сначала нужно завершить регистрацию в боте.")
+            await show_consent(message, state)
+        else:
+            await message.answer("QR-код недействителен или устарел.")
+        return
+
+    marketing_link = None
+    if payload.startswith("m_"):
+        token = payload[len("m_"):]
+        marketing_link = await repository.record_marketing_visit(user_id, token)
+        if marketing_link:
+            await repository.upsert_lead(
+                user_id, message.from_user.username, message.from_user.first_name,
+                last_step="start", marketing_link_id=marketing_link["id"]
+            )
+
+    if await is_user_registered(user_id):
+        await repository.mark_lead_completed(user_id)
         await state.clear()
-        await message.answer(
-            "🏠 Главное меню",
-            reply_markup=main_menu_keyboard(),
-        )
+        if marketing_link and marketing_link.get("event_id"):
+            await message.answer(
+                "👋 Вы перешли по ссылке мероприятия.",
+                reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
+                    InlineKeyboardButton(
+                        text="🎫 Открыть мероприятие",
+                        callback_data=f"event:{marketing_link['event_id']}",
+                    )
+                ]]),
+            )
+        else:
+            await message.answer("🏠 Главное меню", reply_markup=main_menu_keyboard())
         return
 
     await show_consent(message, state)
+
+
+@router.callback_query(F.data == "continue_registration")
+async def continue_registration(callback: CallbackQuery, state: FSMContext):
+    await callback.answer()
+    if await is_user_registered(callback.from_user.id):
+        await state.clear()
+        await callback.message.edit_text("🏠 Главное меню", reply_markup=main_menu_keyboard())
+        return
+    await state.clear()
+    await state.set_state(Registration.consent)
+    await state.update_data(wizard_message_id=callback.message.message_id, editing=False)
+    await callback.message.edit_text(
+        "👋 Продолжим регистрацию.\n\nДля начала подтвердите согласие на обработку персональных данных.",
+        reply_markup=get_consent_keyboard(),
+    )
 
 
 @router.callback_query(F.data == "edit_profile")
@@ -392,7 +480,7 @@ async def form_back(callback: CallbackQuery, state: FSMContext):
 async def accept_consent(callback: CallbackQuery, state: FSMContext):
     await state.set_state(Registration.surname)
     await callback.message.edit_text(
-        "Введите вашу фамилию:",
+        "Введите вашу фамилию.\nНапример: Иванов",
         reply_markup=_nav_keyboard(),
     )
     await callback.answer()
@@ -400,35 +488,56 @@ async def accept_consent(callback: CallbackQuery, state: FSMContext):
 
 @router.message(Registration.surname)
 async def process_surname(message: Message, bot: Bot, state: FSMContext):
-    if not message.text:
-        await _prompt_after_text(message, bot, state, "Пожалуйста, введите фамилию:", _nav_keyboard())
+    surname = _normalise_name_part(message.text or "")
+    if surname is None:
+        await _prompt_after_text(
+            message,
+            bot,
+            state,
+            "Введите фамилию только буквами.\nНапример: Иванов",
+            _nav_keyboard(),
+        )
         return
 
-    await state.update_data(surname=message.text.strip())
+    await state.update_data(surname=surname)
     await state.set_state(Registration.name)
-    await _prompt_after_text(message, bot, state, "Введите ваше имя:", _nav_keyboard("surname"))
+    await _prompt_after_text(message, bot, state, "Введите ваше имя.\nНапример: Иван", _nav_keyboard("surname"))
 
 
 @router.message(Registration.name)
 async def process_name(message: Message, bot: Bot, state: FSMContext):
-    if not message.text:
-        await _prompt_after_text(message, bot, state, "Пожалуйста, введите имя:", _nav_keyboard("surname"))
+    name = _normalise_name_part(message.text or "")
+    if name is None:
+        await _prompt_after_text(
+            message,
+            bot,
+            state,
+            "Введите имя только буквами.\nНапример: Тимур",
+            _nav_keyboard("surname"),
+        )
         return
 
-    await state.update_data(name=message.text.strip())
+    await state.update_data(name=name)
     await state.set_state(Registration.patronymic)
-    await _prompt_after_text(message, bot, state, "Введите ваше отчество:", _nav_keyboard("name"))
+    await _prompt_after_text(message, bot, state, "Введите ваше отчество.\nНапример: Иванович", _nav_keyboard("name"))
 
 
 @router.message(Registration.patronymic)
 async def process_patronymic(message: Message, bot: Bot, state: FSMContext):
-    if not message.text:
-        await _prompt_after_text(message, bot, state, "Пожалуйста, введите отчество:", _nav_keyboard("name"))
+    patronymic = _normalise_name_part(message.text or "")
+    if patronymic is None:
+        await _prompt_after_text(
+            message,
+            bot,
+            state,
+            "Введите отчество только буквами.\nНапример: Айдарович",
+            _nav_keyboard("name"),
+        )
         return
 
-    await state.update_data(patronymic=message.text.strip())
+    await state.update_data(patronymic=patronymic)
     await state.set_state(Registration.university)
-    await _prompt_after_text(message, bot, state, "Из какого ты вуза?", get_university_keyboard())
+    await _prompt_after_text(message, bot, state, "Из какого ты вуза?\nНапример: РТУ МИРЭА", get_university_keyboard())
 
 
 @router.callback_query(
@@ -468,12 +577,36 @@ async def process_other_university(message: Message, bot: Bot, state: FSMContext
     await _safe_delete_user_message(message)
 
     if result["status"] == "not_found":
+        await state.update_data(pending_university=query)
+        await state.set_state(Registration.confirm_custom_university)
         await _edit_wizard(
             bot,
             message.chat.id,
             state,
-            "Не удалось найти такой вуз. Попробуйте ввести название ещё раз:",
-            _nav_keyboard("university"),
+            f"Я не нашёл «{query}» в справочнике.\n\n"
+            "Если название введено правильно, можно продолжить регистрацию.",
+            InlineKeyboardMarkup(
+                inline_keyboard=[
+                    [
+                        InlineKeyboardButton(
+                            text="✅ Всё верно",
+                            callback_data="custom_university_confirm",
+                        )
+                    ],
+                    [
+                        InlineKeyboardButton(
+                            text="✏️ Ввести заново",
+                            callback_data="custom_university_retry",
+                        )
+                    ],
+                    [
+                        InlineKeyboardButton(
+                            text="✖️ Отмена",
+                            callback_data="form_cancel",
+                        )
+                    ],
+                ]
+            ),
         )
         return
 
@@ -535,6 +668,31 @@ async def pick_university(callback: CallbackQuery, state: FSMContext):
 
 
 @router.callback_query(
+    Registration.confirm_custom_university,
+    F.data == "custom_university_confirm",
+)
+async def confirm_custom_university(callback: CallbackQuery, state: FSMContext):
+    data = await state.get_data()
+    name = data.get("pending_university")
+
+    if not name:
+        await callback.answer("Название вуза потеряно", show_alert=True)
+        return
+
+    university = await repository.create_university(name)
+    await _save_selected_university(state, university)
+    await _show_step(callback, state, "course")
+
+
+@router.callback_query(
+    Registration.confirm_custom_university,
+    F.data == "custom_university_retry",
+)
+async def retry_custom_university(callback: CallbackQuery, state: FSMContext):
+    await _show_step(callback, state, "other_university")
+
+
+@router.callback_query(
     Registration.course,
     F.data.in_({"course_1", "course_2", "course_3", "course_4", "course_magistracy"}),
 )
@@ -559,7 +717,7 @@ async def process_institute(message: Message, bot: Bot, state: FSMContext):
 
     await state.update_data(institute=message.text.strip())
     await state.set_state(Registration.direction)
-    await _prompt_after_text(message, bot, state, "Какое у тебя направление?", _nav_keyboard("institute"))
+    await _prompt_after_text(message, bot, state, "Введите название направления.\nНапример: Информатика и вычислительная техника", _nav_keyboard("institute"))
 
 
 @router.message(Registration.direction)
@@ -587,7 +745,7 @@ async def process_direction(message: Message, bot: Bot, state: FSMContext):
         return
 
     await state.set_state(Registration.direction_code)
-    await _prompt_after_text(message, bot, state, "Какой код у твоего направления?", _nav_keyboard("direction"))
+    await _prompt_after_text(message, bot, state, "Введите код направления.\nНапример: 09.03.02", _nav_keyboard("direction"))
 
 
 @router.message(Registration.direction_code)
@@ -596,9 +754,18 @@ async def process_direction_code(message: Message, bot: Bot, state: FSMContext):
         await _prompt_after_text(message, bot, state, "Пожалуйста, введите код направления:", _nav_keyboard("direction"))
         return
 
-    await state.update_data(direction_code=message.text.strip())
+    value = message.text.strip()
+    if not re.fullmatch(r"\d{2}\.\d{2}\.\d{2}", value):
+        await _prompt_after_text(
+            message, bot, state,
+            "Введите код направления в формате 11.11.11.\nНапример: 09.03.02",
+            _nav_keyboard("direction"),
+        )
+        return
+
+    await state.update_data(direction_code=value)
     await state.set_state(Registration.group)
-    await _prompt_after_text(message, bot, state, "Какой номер у твоей группы?", _nav_keyboard("direction_code"))
+    await _prompt_after_text(message, bot, state, "Введите наименование группы.\nНапример: ЭФБО-02-26", _nav_keyboard("direction_code"))
 
 
 @router.message(Registration.group)
@@ -607,7 +774,16 @@ async def process_group(message: Message, bot: Bot, state: FSMContext):
         await _prompt_after_text(message, bot, state, "Пожалуйста, введите номер группы:", _nav_keyboard("direction_code"))
         return
 
-    await state.update_data(group=message.text.strip())
+    value = message.text.strip().upper()
+    if not re.fullmatch(r"[А-ЯЁA-Z]{2,10}-\d{2}-\d{2}", value):
+        await _prompt_after_text(
+            message, bot, state,
+            "Введите полное наименование группы в формате АААА-11-11.\nНапример: ЭФБО-02-26",
+            _nav_keyboard("direction_code"),
+        )
+        return
+
+    await state.update_data(group=value)
     data = await state.get_data()
 
     if not await save_user_profile(message, data):
