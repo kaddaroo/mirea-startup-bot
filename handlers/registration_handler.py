@@ -12,7 +12,7 @@ from aiogram.types import (
     Message,
 )
 
-from config import COINS_PER_ATTENDANCE
+from config import COINS_FIRST_ATTENDANCE_BONUS, COINS_PER_ATTENDANCE
 from main_menu.keyboard import main_menu_keyboard
 from placeholders import runtime_repository as repository
 from university_matcher import find_best_universities, string_normalise
@@ -39,6 +39,33 @@ class Registration(StatesGroup):
 
 async def is_user_registered(telegram_id: int) -> bool:
     return await repository.find_user(telegram_id) is not None
+
+
+def _user_navigation_keyboard(
+    *,
+    show_balance: bool = False,
+    show_events: bool = False,
+) -> InlineKeyboardMarkup:
+    rows = []
+    if show_balance:
+        rows.append([InlineKeyboardButton(text="💰 Баланс", callback_data="balance")])
+    if show_events:
+        rows.append([InlineKeyboardButton(text="🎫 Мероприятия", callback_data="show_events")])
+    rows.append([InlineKeyboardButton(text="🏠 Главное меню", callback_data="main_menu")])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def _restart_registration_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="🔄 Начать регистрацию",
+                    callback_data="continue_registration",
+                )
+            ]
+        ]
+    )
 
 
 def _nav_keyboard(back_to: str | None = None) -> InlineKeyboardMarkup:
@@ -381,25 +408,58 @@ async def start_handler(message: Message, state: FSMContext, command: CommandObj
 
     if payload.startswith("checkin_"):
         token = payload[len("checkin_"):]
-        result = await repository.checkin_by_token(user_id, token, COINS_PER_ATTENDANCE)
+        result = await repository.checkin_by_token(
+            user_id,
+            token,
+            COINS_PER_ATTENDANCE,
+            COINS_FIRST_ATTENDANCE_BONUS,
+        )
         status = result.get("status")
         event = result.get("event") or {}
         if status == "ok":
+            attendance_reward = int(result.get("attendance_reward") or 0)
+            first_bonus = int(result.get("first_attendance_bonus") or 0)
+            lines = [
+                f"✅ Посещение «{event.get('name', 'мероприятия')}» отмечено!",
+                f"🪙 За посещение начислено {attendance_reward} коинов.",
+            ]
+            if first_bonus:
+                lines.append(
+                    f"🎉 Бонус за первое мероприятие в клубе: +{first_bonus} коинов."
+                )
             await message.answer(
-                f"✅ Посещение «{event.get('name', 'мероприятия')}» отмечено!\n"
-                f"🪙 Начислено {COINS_PER_ATTENDANCE} коина."
+                "\n".join(lines),
+                reply_markup=_user_navigation_keyboard(
+                    show_balance=True,
+                    show_events=True,
+                ),
             )
         elif status == "already":
-            await message.answer("✅ Вы уже отметились на этом мероприятии.")
+            await message.answer(
+                "✅ Вы уже отметились на этом мероприятии.",
+                reply_markup=_user_navigation_keyboard(
+                    show_balance=True,
+                    show_events=True,
+                ),
+            )
         elif status == "closed":
-            await message.answer("🔒 Отметка посещения сейчас закрыта. Покажите QR администратору мероприятия.")
+            await message.answer(
+                "🔒 Отметка посещения сейчас закрыта. Покажите QR администратору мероприятия.",
+                reply_markup=_user_navigation_keyboard(show_events=True),
+            )
         elif status == "not_registered_event":
-            await message.answer("Вы не были зарегистрированы на это мероприятие, поэтому отметить посещение через этот QR нельзя.")
+            await message.answer(
+                "Вы не были зарегистрированы на это мероприятие, поэтому отметить посещение через этот QR нельзя.",
+                reply_markup=_user_navigation_keyboard(show_events=True),
+            )
         elif status == "not_registered_bot":
             await message.answer("Сначала нужно завершить регистрацию в боте.")
             await show_consent(message, state)
         else:
-            await message.answer("QR-код недействителен или устарел.")
+            await message.answer(
+                "QR-код недействителен или устарел.",
+                reply_markup=_user_navigation_keyboard(),
+            )
         return
 
     marketing_link = None
@@ -418,12 +478,22 @@ async def start_handler(message: Message, state: FSMContext, command: CommandObj
         if marketing_link and marketing_link.get("event_id"):
             await message.answer(
                 "👋 Вы перешли по ссылке мероприятия.",
-                reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
-                    InlineKeyboardButton(
-                        text="🎫 Открыть мероприятие",
-                        callback_data=f"event:{marketing_link['event_id']}",
-                    )
-                ]]),
+                reply_markup=InlineKeyboardMarkup(
+                    inline_keyboard=[
+                        [
+                            InlineKeyboardButton(
+                                text="🎫 Открыть мероприятие",
+                                callback_data=f"event:{marketing_link['event_id']}",
+                            )
+                        ],
+                        [
+                            InlineKeyboardButton(
+                                text="🏠 Главное меню",
+                                callback_data="main_menu",
+                            )
+                        ],
+                    ]
+                ),
             )
         else:
             await message.answer("🏠 Главное меню", reply_markup=main_menu_keyboard())
@@ -465,8 +535,10 @@ async def cancel_form(callback: CallbackQuery, state: FSMContext):
             reply_markup=main_menu_keyboard(),
         )
     else:
-        await safe_edit_callback_text(callback, 
-            "Регистрация отменена. Чтобы начать заново, отправьте /start."
+        await safe_edit_callback_text(
+            callback,
+            "Регистрация отменена. Вы можете начать заново в любой момент.",
+            reply_markup=_restart_registration_keyboard(),
         )
 
 

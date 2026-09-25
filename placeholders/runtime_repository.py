@@ -5,6 +5,10 @@ def set_sql_enabled(_enabled: bool) -> None:
     return
 
 
+async def ensure_rewards_schema() -> None:
+    return await repository_sql.ensure_rewards_schema()
+
+
 async def find_user(telegram_id: int):
     return await repository_sql.find_user(telegram_id)
 
@@ -57,8 +61,8 @@ async def add_registration(telegram_id: int, event_id: int) -> bool:
     return await repository_sql.add_registration(telegram_id, event_id)
 
 
-async def sync_attendance_coins(reward: int) -> int:
-    return await repository_sql.sync_attendance_coins(reward)
+async def sync_attendance_coins(reward: int, first_attendance_bonus: int) -> int:
+    return await repository_sql.sync_attendance_coins(reward, first_attendance_bonus)
 
 
 async def create_event(
@@ -124,20 +128,47 @@ async def mark_feedback_sent(reg_id: int):
     return await repository_sql.mark_feedback_sent(reg_id)
 
 
-async def save_feedback(telegram_id: int, event_id: int, rating: int, comment: str | None = None):
-    return await repository_sql.save_feedback(telegram_id, event_id, rating, comment)
-
-
-async def set_feedback_comment(telegram_id: int, event_id: int, comment: str):
-    return await repository_sql.set_feedback_comment(telegram_id, event_id, comment)
+async def complete_feedback(
+    *,
+    telegram_id: int,
+    event_id: int,
+    location_rating: int,
+    speakers_rating: int,
+    organization_rating: int,
+    overall_rating: int,
+    liked_improve: str,
+    wishes: str,
+    reward: int,
+):
+    return await repository_sql.complete_feedback(
+        telegram_id,
+        event_id,
+        location_rating,
+        speakers_rating,
+        organization_rating,
+        overall_rating,
+        liked_improve,
+        wishes,
+        reward,
+    )
 
 
 async def set_checkin_open(event_id: int, is_open: bool):
     return await repository_sql.set_checkin_open(event_id, is_open)
 
 
-async def checkin_by_token(telegram_id: int, token: str, reward: int):
-    return await repository_sql.checkin_by_token(telegram_id, token, reward)
+async def checkin_by_token(
+    telegram_id: int,
+    token: str,
+    reward: int,
+    first_attendance_bonus: int,
+):
+    return await repository_sql.checkin_by_token(
+        telegram_id,
+        token,
+        reward,
+        first_attendance_bonus,
+    )
 
 
 async def create_marketing_link(event_id: int | None, source: str, campaign: str | None, placement: str | None):

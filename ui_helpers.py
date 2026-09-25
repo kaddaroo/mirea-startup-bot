@@ -11,11 +11,7 @@ async def safe_callback_answer(
     text: str | None = None,
     show_alert: bool = False,
 ) -> bool:
-    """Answer a callback without crashing on an expired Telegram query.
-
-    Returns True when Telegram accepted the answer and False when the
-    callback query had already expired. Other Telegram errors are re-raised.
-    """
+    """Answer a callback without crashing on an expired Telegram query."""
     try:
         await callback.answer(text=text, show_alert=show_alert)
         return True

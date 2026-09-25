@@ -10,11 +10,16 @@ from handlers.coins_balance_handler import router as coins_router
 from handlers.engagement_handler import router as engagement_router
 from handlers.profile_view_handler import router as profile_router
 from handlers.registration_handler import router as registration_router
+from placeholders import runtime_repository as repository
 from placeholders.events import router as events_router
 from services import background_worker
 
 
 async def main():
+    # Idempotent startup migration for coin rules 1-3.
+    # Existing data is preserved; only missing columns are added.
+    await repository.ensure_rewards_schema()
+
     bot = Bot(token=BOT_TOKEN)
     dp = Dispatcher()
 

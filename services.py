@@ -4,7 +4,11 @@ from aiogram import Bot
 from aiogram.exceptions import TelegramBadRequest, TelegramForbiddenError
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
-from config import COINS_PER_ATTENDANCE, WORKER_INTERVAL_SECONDS
+from config import (
+    COINS_FIRST_ATTENDANCE_BONUS,
+    COINS_PER_ATTENDANCE,
+    WORKER_INTERVAL_SECONDS,
+)
 from placeholders import runtime_repository as repository
 from handlers.engagement_handler import rating_keyboard
 
@@ -19,7 +23,10 @@ async def _safe_send(bot: Bot, chat_id: int, text: str, reply_markup=None) -> bo
 
 
 async def process_attendance_coins():
-    awarded = await repository.sync_attendance_coins(COINS_PER_ATTENDANCE)
+    awarded = await repository.sync_attendance_coins(
+        COINS_PER_ATTENDANCE,
+        COINS_FIRST_ATTENDANCE_BONUS,
+    )
     if awarded:
         print(f"Coin rewards issued: {awarded}")
 
@@ -45,9 +52,17 @@ async def process_feedback(bot: Bot):
     for item in await repository.get_due_feedback(100):
         text = (
             f"Спасибо, что были с нами на «{item['name']}»! ❤️\n\n"
-            "Как вам мероприятие? Оцените его от 1 до 5."
+            "📝 Проработка формы займёт около 10 минут.\n\n"
+            "1. Оценка по шкале от 1 до 5\n\n"
+            "Оцените по шкале от 1 до 5:\n"
+            "🏠 Локация"
         )
-        if await _safe_send(bot, item["telegram_id"], text, rating_keyboard(item["event_id"])):
+        if await _safe_send(
+            bot,
+            item["telegram_id"],
+            text,
+            rating_keyboard(item["event_id"], "location"),
+        ):
             await repository.mark_feedback_sent(item["reg_id"])
 
 
