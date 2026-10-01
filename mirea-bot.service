@@ -1,6 +1,6 @@
 #/etc/systemd/system
 [Unit]
-Description=Mirea startub bot
+Description=Mirea startup bot
 After=network.target
 
 [Service]
